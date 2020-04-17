@@ -32,31 +32,38 @@
  */
 
 // input sequences to align in fasta format
-params.seqs = "$baseDir/data/*.fa"
-params.refs = "$baseDir/data/*.ref"
+//params.seqs ="${baseDir}/test/*.fa"
+params.seqs ="/users/cn/egarriga/datasets/homfam/combinedSeqs/*.fa"
+
+// input reference sequences aligned in
+//params.refs ="${baseDir}/test/*.ref"
+params.refs ="/users/cn/egarriga/datasets/homfam/refs/*.ref"
 
 // input guide trees in Newick format. Or `false` to generate trees
-//params.trees = "/users/cn/egarriga/datasets/homfam/trees/*.{FAMSA,CLUSTALO,CLUSTALO-RANDOM,MAFFT_PARTTREE}.dnd"
-params.trees =""
+//params.trees ="/home/edgar/CBCRG/nf_homoplasty/results_trees"
 
-// generate regressive alignments ?
-params.regressive_align = true
+// which tree methods to run if `trees` == `false`
+params.tree_method = "codnd"
+//"famsaUpgma,famsaSL,famsaParttreeSL,famsaParttreeUpgma"     //FAMSA,CLUSTALO,MAFFT_PARTTREE,dpparttreednd0
+//codnd,dpparttreednd0,dpparttreednd1,dpparttreednd2,dpparttreednd2size,fastaparttreednd,fftns1dnd,fftns1dndmem,fftns2dnd,fftns2dndmem,mafftdnd,parttreednd0,parttreednd1,parttreednd2,parttreednd2size
 
-// create progressive alignments ?
-params.progressive_align = true
+// which alignment methods to run
+params.align_method = "CLUSTALO,MAFFT-FFTNS1,FAMSA"      //"CLUSTALO,MAFFT-FFTNS1,MAFFT-SPARSECORE,UPP,MAFFT-GINSI"
+
+// bucket sizes for regressive algorithm
+params.buckets= '10'
+
+//run reg with slave trees
+params.slave_align = true
+params.slave_tree_method = "mbed,parttree,famsadnd"
 
 // evaluate alignments ?
 params.evaluate = true
-
-//aligner and tree generation
-tree_method = "FAMSA"
-align_method = "FAMSA"
-
-// bucket sizes for regressive algorithm
-params.buckets= '1000'
+params.homoplasy = true
+params.metrics = true
 
 // output directory
-//defined in nextflow.config
+params.outdir = "$baseDir/results"
 
 log.info """\
          F  A  M  S  A    P  i  p  e  l  i  n  e  ~  version 0.1"
@@ -64,11 +71,10 @@ log.info """\
          Input sequences (FASTA)                        : ${params.seqs}
          Input references (Aligned FASTA)               : ${params.refs}
          Input trees (NEWICK)                           : ${params.trees}
-         Alignment methods                              : ${align_method}
-         Tree methods                                   : ${tree_method}
-         Generate progressive alignments                : ${params.progressive_align}
-         Generate regressive alignments (DPA)           : ${params.regressive_align}
-         Bucket Sizes for regressive alignments         : ${params.buckets}
+         Alignment methods                              : ${params.align_method}
+         Tree methods                                   : ${params.tree_method}
+         Generate Slave tree alignments                 : ${params.slave_align}
+         Slave Tree methods                             : ${params.slave_tree_method}
          Perform evaluation? Requires reference         : ${params.evaluate}
          Output directory (DIRECTORY)                   : ${params.outdir}
          """
@@ -103,6 +109,10 @@ else {
     .set { trees }
 }
 
+align_methods = params.align_method
+slave_trees_methods = params.slave_tree_method
+tree_methods = params.tree_method
+
 /*
  * GENERATE GUIDE TREES USING MEHTODS DEFINED WITH "--tree_method"
  *
@@ -118,6 +128,7 @@ process generate_trees {
     set val(id), \
          file(seqs) \
          from seqsCh
+    each tree_method from tree_methods.tokenize(',')
 
    output:
      set val(id), \
@@ -129,94 +140,167 @@ process generate_trees {
      !params.trees
 
    script:
-   """
-   famsa -gt_export ${id}.${tree_method}.dnd ${seqs} ${id}.aln
-   """
+    template "tree/generate_tree_${tree_method}.sh"
+
 }
 
 treesGenerated
   .mix ( trees )
   .combine ( seqs2, by:0 )
-  .into {seqsAndTreesForRegressiveAlignment; seqsAndTreesForProgressiveAlignment }
+  .into {seqsAndTreesForRegressiveAlignment; seqsAndTreesForSlaveAlignment }
 
 
-process regressive_alignment {
+process slave_alignment {
     tag "${id}"
     publishDir "${params.outdir}/alignments", mode: 'copy', overwrite: true
 
     input:
-        set val(id), \
+      set val(id), \
         val(tree_method), \
         file(guide_tree), \
         file(seqs) \
-        from seqsAndTreesForRegressiveAlignment
+        from seqsAndTreesForSlaveAlignment
+
+      each slave_tree from slave_trees_methods.tokenize(',')   
+
+      each align_method from align_methods.tokenize(',')   
 
       each bucket_size from params.buckets.tokenize(',')
 
     when:
-      params.regressive_align
+      params.slave_align
 
     output:
       set val(id), \
         val("${align_method}"), \
         val(tree_method), \
-        val("reg_align"), \
+        val("slave_align"), \
         val(bucket_size), \
-        file("${id}.reg_align.${bucket_size}.${align_method}.with.${tree_method}.tree.aln") \
-        into regressiveOut
+        val("${slave_tree}"), \
+        file("${id}.slave_align.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.aln") \
+        into slaveOut
+      
+      set val(id), \
+        val("${align_method}"), \
+        val(tree_method), \
+        val(bucket_size), \
+        val("${slave_tree}"), \
+        file("${id}.homoplasy") \
+        into homoSlave
 
-    script:
-    """
-        t_coffee -reg -reg_method famsa_msa \
-         -reg_tree ${guide_tree} \
-         -seq ${seqs} \
-         -reg_nseq ${bucket_size} \
-         -reg_homoplasy \
-         -outfile ${id}.reg_align.${bucket_size}.${align_method}.with.${tree_method}.tree.aln
-    """
+      set val(id), \
+        val("${align_method}"), \
+        val(tree_method), \
+        val("slave_align"), \
+        val(bucket_size), \
+        val("${slave_tree}"), \
+        file(".command.trace") \
+        into metricsSlave
+
+script:
+       template "slave_reg/slave_reg_${align_method}.sh"
 }
 
-process progressive_alignment {
+process metrics{
     tag "${id}"
-    publishDir "${params.outdir}/alignments", mode: 'copy', overwrite: true
+    publishDir "${params.outdir}/metrics", mode: 'copy', overwrite: true
 
     input:
-        set val(id), \
-        val(tree_method), \
-        file(guide_tree), \
-        file(seqs) \
-        from seqsAndTreesForProgressiveAlignment
+    set val(id), \
+      val(align_method), \
+      val(tree_method), \
+      val(mode), \
+      val(bucket_size), \
+      val(slave_tree), \
+      val(metricsFile) \
+      from metricsSlave
 
     when:
-      params.progressive_align
+      params.metrics
 
     output:
-      set val(id), \
-        val("${align_method}"), \
-        val(tree_method), \
-        val("prog_align"), \
-        val("NA"), \
-        file("${id}.prog_align.NA.${align_method}.with.${tree_method}.tree.aln") \
-        into progressiveOut
+    set file("${id}.${mode}.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.metrics"), \
+      file("*.realtime"), \
+      file("*.rss"), \
+      file("*.peakRss"), \
+      file("*.vmem"), \
+      file("*.peakVmem"), \
+      file("*.metrics") \
+        into metricsOut
 
     script:
-    """
-      famsa -gt_import ${guide_tree} ${seqs} ${id}.prog_align.NA.${align_method}.with.${tree_method}.tree.aln
+    """    
+    ## realtime > Task execution time i.e. delta between completion and start timestamp i.e. compute wall-time
+    awk -F = '{ if (\$1=="realtime") print \$2}' ${metricsFile} > ${id}.${mode}.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.realtime
+
+    ## rss > Real memory (resident set) size of the process
+    awk -F = '{ if (\$1=="rss") print \$2}' ${metricsFile}> ${id}.${mode}.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.rss
+
+    ## peakRss > Peak of real memory
+    awk -F = '{ if (\$1=="peak_rss") print \$2}' ${metricsFile} > ${id}.${mode}.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.peakRss
+
+    ## vmem > Virtual memory size of the process
+    awk -F = '{ if (\$1=="vmem") print \$2}' ${metricsFile} > ${id}.${mode}.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.vmem
+
+    ## peakVmem > Peak of virtual memory
+    awk -F = '{ if (\$1=="peak_vmem") print \$2}' ${metricsFile} > ${id}.${mode}.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.peakVmem
+
+    mv ${metricsFile} ${id}.${mode}.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.metrics
     """
 }
 
-progressiveOut
-  .mix ( regressiveOut )
-  .set { all_alignments }
+process homoplasy{
+    tag "${id}"
+    publishDir "${params.outdir}/homoplasy", mode: 'copy', overwrite: true
+
+    input:
+    set val(id), \
+      val(align_method), \
+      val(tree_method), \
+      val(bucket_size), \
+      val(slave_tree), \
+      file(homoplasy) \
+      from homoSlave
+
+    when:
+      params.homoplasy
+
+    output:
+    set file("*.homo"), \
+        file("*.w_homo"), \
+        file("*.w_homo2"), \
+        file("*.len"), \
+        file("*.ngap"), \
+        file("*.ngap2") \
+        into homoplasyOut
+
+    script:
+    """    
+    ## homo
+    awk -F : '{ if (\$1=="HOMOPLASY") print \$2}' ${homoplasy} > ${id}.reg_align.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.homo
+    ## w_homo
+    awk -F : '{ if (\$1=="WEIGHTED_HOMOPLASY") print \$2}' ${id}.homoplasy > ${id}.reg_align.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.w_homo
+    ## w_homo2
+    awk -F : '{ if (\$1=="WEIGHTED_HOMOPLASY2") print \$2}' ${id}.homoplasy > ${id}.reg_align.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.w_homo2
+    ## len
+    awk -F : '{ if (\$1=="LEN") print \$2}' ${id}.homoplasy > ${id}.reg_align.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.len
+    ## ngap
+    awk -F : '{ if (\$1=="NGAP") print \$2}' ${id}.homoplasy > ${id}.reg_align.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.ngap
+    ## ngap2
+    awk -F : '{ if (\$1=="NGAP2") print \$2}' ${id}.homoplasy > ${id}.reg_align.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.ngap2 
+    """
+}
 
 refs
-  .cross (all_alignments )
-  .map { it -> [it[0][0], it[1][1], it[1][2], it[1][3], it[1][4], it[1][5], it[0][1]] }
-  .set { toEvaluate }
+  .cross (slaveOut )
+  .map { it -> [it[0][0], it[1][1], it[1][2], it[1][3], it[1][4], it[1][5], it[1][6],it[0][1]] }
+  .into { toEsl; toEvaluate}
 
-process evaluation {
+process esl{
     tag "${id}.${align_method}.${tree_method}.${align_type}.${bucket_size}"
-    publishDir "${params.outdir}/individual_scores", mode: 'copy', overwrite: true
+    publishDir "${params.outdir}/esl", mode: 'copy', overwrite: true
+    label 'process_low'
+    container 'edgano/hmmer'
 
     input:
       set val(id), \
@@ -224,17 +308,43 @@ process evaluation {
           val(tree_method), \
           val(align_type), \
           val(bucket_size), \
+          val(slave_tree), \
+          file(test_alignment), \
+          file(ref_alignment) \
+          from toEsl
+    output:
+      set file("*.easel_INFO"),file("*.avgLen"),file("*.avgId") into eslOut
+      
+     shell:
+     '''
+     esl-alistat !{test_alignment} > !{id}.!{align_type}.!{bucket_size}.!{align_method}.with.!{tree_method}.tree.slave.!{slave_tree}.easel_INFO
+     awk -F : '{ if (\$1=="Average length") print \$2}' !{id}.!{align_type}.!{bucket_size}.!{align_method}.with.!{tree_method}.tree.slave.!{slave_tree}.easel_INFO | sed 's/ //g' > !{id}.!{align_type}.!{bucket_size}.!{align_method}.with.!{tree_method}.tree.slave.!{slave_tree}.avgLen 
+     awk -F : '{ if (\$1=="Average identity") print substr(\$2, 1, length(\$2)-1)}' !{id}.!{align_type}.!{bucket_size}.!{align_method}.with.!{tree_method}.tree.slave.!{slave_tree}.easel_INFO | sed 's/ //g' > !{id}.!{align_type}.!{bucket_size}.!{align_method}.with.!{tree_method}.tree.slave.!{slave_tree}.avgId 
+
+     ## awk 'NR > 8 && $1 !~/\\// { sum+= $3 } END {print "SUM: "sum"\\nAVG: "sum/(NR-9)}' !{id}.!{align_type}.!{bucket_size}.!{align_method}.with.!{tree_method}.tree.slave.!{slave_tree}.easel_INFO > !{id}.!{align_type}.!{bucket_size}.!{align_method}.with.!{tree_method}.tree.slave.!{slave_tree}.easel_AVG
+     ## the first && is to skip first lines and the last one. The AVG is done -8 all the time execpt for the END print to "erase" the last "//" too.
+     '''
+}
+
+process evaluation {
+    tag "${id}.${align_method}.${tree_method}.${align_type}.${bucket_size}"
+    publishDir "${params.outdir}/individual_scores", mode: 'copy', overwrite: true
+    //container 'edgano/homoplasy:latest'
+    label 'process_low'
+
+    input:
+      set val(id), \
+          val(align_method), \
+          val(tree_method), \
+          val(align_type), \
+          val(bucket_size), \
+          val(slave_tree), \
           file(test_alignment), \
           file(ref_alignment) \
           from toEvaluate
 
     output:
-      set val(id), \
-          val(tree_method), \
-          val(align_method), \
-          val(align_type), \
-          val(bucket_size), \
-          file("*.sp"), \
+      set file("*.sp"), \
           file("*.tc"), \
           file("*.col") \
           into scores
@@ -250,7 +360,7 @@ process evaluation {
             -compare_mode sp \
             | grep -v "seq1" | grep -v '*' | \
             awk '{ print \$4}' ORS="\t" \
-            > "${id}.${align_type}.${bucket_size}.${align_method}.with.${tree_method}.tree.sp"
+            > "${id}.${align_type}.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.sp"
 
        t_coffee -other_pg aln_compare \
              -al1 ${ref_alignment} \
@@ -258,7 +368,7 @@ process evaluation {
             -compare_mode tc \
             | grep -v "seq1" | grep -v '*' | \
             awk '{ print \$4}' ORS="\t" \
-            > "${id}.${align_type}.${bucket_size}.${align_method}.with.${tree_method}.tree.tc"
+            > "${id}.${align_type}.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.tc"
 
        t_coffee -other_pg aln_compare \
              -al1 ${ref_alignment} \
@@ -266,7 +376,7 @@ process evaluation {
             -compare_mode column \
             | grep -v "seq1" | grep -v '*' | \
               awk '{ print \$4}' ORS="\t" \
-            > "${id}.${align_type}.${bucket_size}.${align_method}.with.${tree_method}.tree.col"
+            > "${id}.${align_type}.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.col"
 
     """
 }
