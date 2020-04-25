@@ -43,19 +43,19 @@ params.refs ="/users/cn/egarriga/datasets/homfam/refs/*.ref"
 //params.trees ="/home/edgar/CBCRG/nf_homoplasty/results_trees"
 
 // which tree methods to run if `trees` == `false`
-params.tree_method = "codnd"
+params.tree_method = "CLUSTALO,MAFFT_PARTTREE"
 //"famsaUpgma,famsaSL,famsaParttreeSL,famsaParttreeUpgma"     //FAMSA,CLUSTALO,MAFFT_PARTTREE,dpparttreednd0
 //codnd,dpparttreednd0,dpparttreednd1,dpparttreednd2,dpparttreednd2size,fastaparttreednd,fftns1dnd,fftns1dndmem,fftns2dnd,fftns2dndmem,mafftdnd,parttreednd0,parttreednd1,parttreednd2,parttreednd2size
 
 // which alignment methods to run
-params.align_method = "CLUSTALO,MAFFT-FFTNS1"      //"CLUSTALO,MAFFT-FFTNS1,MAFFT-SPARSECORE,UPP,MAFFT-GINSI"
+params.align_method = "CLUSTALO"      //"CLUSTALO,MAFFT-FFTNS1,MAFFT-SPARSECORE,UPP,MAFFT-GINSI"
 
 // bucket sizes for regressive algorithm
 params.buckets= '10'
 
 //run reg with slave trees
 params.slave_align = true
-params.slave_tree_method = "mbed,parttree,famsadnd"
+params.slave_tree_method = "mbed,parttree" //,famsadnd"
 
 // evaluate alignments ?
 params.evaluate = true
@@ -198,16 +198,8 @@ process slave_alignment {
         file(".command.trace") \
         into metricsSlave
 
-script:
-"""
-       t_coffee -reg \
-       -reg_method famsa_msa \
-       -tree mbed \
-       -child_tree mbed \
-       -seq ${seqs} -reg_nseq 10 -reg_homoplasy \
-       -outfile ${id}.slave_align.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.aln
-"""
-//  mbed    parttree    famsadnd
+   script:
+    template "slave_reg/slave_reg_${align_method}.sh"
 }
 
 process metrics{
