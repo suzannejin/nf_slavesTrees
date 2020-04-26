@@ -51,11 +51,11 @@ params.tree_method = "CLUSTALO,MAFFT_PARTTREE"
 params.align_method = "CLUSTALO"      //"CLUSTALO,MAFFT-FFTNS1,MAFFT-SPARSECORE,UPP,MAFFT-GINSI"
 
 // bucket sizes for regressive algorithm
-params.buckets= '10'
+params.buckets= '1000'
 
 //run reg with slave trees
 params.slave_align = true
-params.slave_tree_method = "mbed,parttree" //,famsadnd"
+params.slave_tree_method = "mbed,parttree,famsadnd"
 
 // evaluate alignments ?
 params.evaluate = true
@@ -76,6 +76,7 @@ log.info """\
          Tree methods                                   : ${params.tree_method}
          Generate Slave tree alignments                 : ${params.slave_align}
          Slave Tree methods                             : ${params.slave_tree_method}
+         Bucket size                                    : ${params.buckets}
          Perform evaluation? Requires reference         : ${params.evaluate}
          Output directory (DIRECTORY)                   : ${params.outdir}
          """
