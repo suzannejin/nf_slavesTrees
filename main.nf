@@ -40,15 +40,15 @@ params.seqs ="/users/cn/egarriga/datasets/homfam/combinedSeqs/*.fa"
 params.refs ="/users/cn/egarriga/datasets/homfam/refs/*.ref"
 
 // input guide trees in Newick format. Or `false` to generate trees
-//params.trees ="/home/edgar/CBCRG/nf_homoplasty/results_trees"
+params.trees ="/users/cn/egarriga/datasets/homfam/trees/*.{CLUSTALO,MAFFT_PARTTREE,FAMSA}.dnd"
 
 // which tree methods to run if `trees` == `false`
-params.tree_method = "CLUSTALO,MAFFT_PARTTREE"
+params.tree_method = "codnd"
 //"famsaUpgma,famsaSL,famsaParttreeSL,famsaParttreeUpgma"     //FAMSA,CLUSTALO,MAFFT_PARTTREE,dpparttreednd0
 //codnd,dpparttreednd0,dpparttreednd1,dpparttreednd2,dpparttreednd2size,fastaparttreednd,fftns1dnd,fftns1dndmem,fftns2dnd,fftns2dndmem,mafftdnd,parttreednd0,parttreednd1,parttreednd2,parttreednd2size
 
 // which alignment methods to run
-params.align_method = "CLUSTALO"      //"CLUSTALO,MAFFT-FFTNS1,MAFFT-SPARSECORE,UPP,MAFFT-GINSI"
+params.align_method = "CLUSTALO,MAFFT-FFTNS1,FAMSA"      //"CLUSTALO,MAFFT-FFTNS1,MAFFT-SPARSECORE,UPP,MAFFT-GINSI"
 
 // bucket sizes for regressive algorithm
 params.buckets= '1000'
