@@ -1,6 +1,6 @@
 export MAFFT_BINARIES=''
 
-t_coffee -reg -reg_method old_mafftfftns1_msa \
+t_coffee -reg -reg_method mafftfftns1_msa \
      -seq ${seqs} \
      -reg_tree ${guide_tree} \
      -child_tree ${slave_tree} \
