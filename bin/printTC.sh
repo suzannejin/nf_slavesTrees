@@ -22,10 +22,10 @@ declare -a aligner=(CLUSTALO)
 ################
 ##    TREES   ##
 ################   
-declare -a tree=(codnd)
+declare -a tree=(CLUSTALO)
 #             (codnd dpparttreednd1 dpparttreednd2 dpparttreednd2size fastaparttreednd fftns1dnd fftns1dndmem fftns2dnd fftns2dndmem mafftdnd parttreednd0 parttreednd1 parttreednd2 parttreednd2size)
 
-declare -a slaveTrees=(mbed) #parttree famsadnd
+declare -a slaveTrees=(mbed parttree famsadnd)
 
 ###############
 ##   Nseq    ##
@@ -97,6 +97,7 @@ do
     done
   done
 done
+printf "\n"
 
 printf "slaveTree;"
 for x in ${aligner[@]}
