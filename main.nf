@@ -40,31 +40,32 @@ params.seqs ="/users/cn/egarriga/datasets/homfam/combinedSeqs/*.fa"
 params.refs ="/users/cn/egarriga/datasets/homfam/refs/*.ref"
 
 // input guide trees in Newick format. Or `false` to generate trees
-params.trees ="/users/cn/egarriga/datasets/homfam/trees/*.{CLUSTALO,MAFFT_PARTTREE,FAMSA}.dnd"
+//params.trees ="/users/cn/egarriga/datasets/homfam/trees/*.{CLUSTALO,MAFFT_PARTTREE,FAMSA}.dnd"
+params.trees = "/users/cn/sjin/projects/homoplasy/trees/*.{codnd,dpparttreednd0,fastaparttreednd,fftns1dnd,mafftdnd,parttreednd0,parttreednd2,FAMSA,CLUSTALO-RANDOM}.dnd"
 
 // which tree methods to run if `trees` == `false`
-params.tree_method = "codnd"
+params.tree_method = "FAMSA"
 //"famsaUpgma,famsaSL,famsaParttreeSL,famsaParttreeUpgma"     //FAMSA,CLUSTALO,MAFFT_PARTTREE,dpparttreednd0
 //codnd,dpparttreednd0,dpparttreednd1,dpparttreednd2,dpparttreednd2size,fastaparttreednd,fftns1dnd,fftns1dndmem,fftns2dnd,fftns2dndmem,mafftdnd,parttreednd0,parttreednd1,parttreednd2,parttreednd2size
 
 // which alignment methods to run
-params.align_method = "MAFFT-FFTNS1"      //"CLUSTALO,MAFFT-FFTNS1,MAFFT-SPARSECORE,UPP,MAFFT-GINSI"
+params.align_method = "CLUSTALO"      //"CLUSTALO,MAFFT-FFTNS1,MAFFT-SPARSECORE,UPP,MAFFT-GINSI"
 
 // bucket sizes for regressive algorithm
 params.buckets= '1000'
 
 //run reg with slave trees
 params.slave_align = true
-params.slave_tree_method = "mbed,parttree,famsadnd"
+params.slave_tree_method = "parent"   //"mbed,parttree,famsadnd"
 
 // evaluate alignments ?
 params.evaluate = true
-params.homoplasy = false
-params.metrics = false
-params.esl = false
+params.homoplasy = true
+params.metrics = true
+params.esl = true
 
 // output directory
-params.outdir = "$baseDir/results"
+params.outdir = "/users/cn/sjin/projects/homoplasy/slaveTree_results/results_${params.buckets}_${params.align_method}_${params.tree_method}"
 
 log.info """\
          F  A  M  S  A    P  i  p  e  l  i  n  e  ~  version 0.1"
