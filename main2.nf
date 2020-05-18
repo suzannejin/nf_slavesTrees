@@ -51,14 +51,25 @@ params.tree_method = "FAMSA"
 //codnd,dpparttreednd0,dpparttreednd1,dpparttreednd2,dpparttreednd2size,fastaparttreednd,fftns1dnd,fftns1dndmem,fftns2dnd,fftns2dndmem,mafftdnd,parttreednd0,parttreednd1,parttreednd2,parttreednd2size
 
 // which alignment methods to run
-params.align_method = "MAFFT-FFTNS1"      //"CLUSTALO,MAFFT-FFTNS1,MAFFT-SPARSECORE,UPP,MAFFT-GINSI"
+params.align_method = "MAFFT-GINSI"      //"CLUSTALO,MAFFT-FFTNS1,MAFFT-SPARSECORE,UPP,MAFFT-GINSI"
 
 // bucket sizes for regressive algorithm
-params.buckets= '50'
+params.buckets= '200,500,1000'
 
-//run reg with slave trees
+// run reg with slave trees
 params.slave_align = true
 params.slave_tree_method = "parent"   //"parent,mbed,parttree,famsadnd"
+
+// quantest2 score ?
+params.quantest2 = true
+params.nquan = '1000'
+params.refnames = "/users/cn/sjin/projects/homoplasy/ss/informative3/*.aux"  // The names of the 3 reference sequences per family
+params.ss = "/users/cn/sjin/projects/homoplasy/ss/informative3/*.ss"   // Secondary structure of the 3 references
+
+// seqid score ? 
+params.dTSseqidscore = true
+params.nseqid = '1000'
+
 
 // evaluate alignments ?
 params.evaluate = true
@@ -82,6 +93,8 @@ log.info """\
          Slave Tree methods                             : ${params.slave_tree_method}
          Bucket size                                    : ${params.buckets}
          Perform evaluation? Requires reference         : ${params.evaluate}
+         QuanTest2 score ?                              : ${params.quantest2}
+         Get seqidscore ?                               : ${params.dTSseqidscore}
          Output directory (DIRECTORY)                   : ${params.outdir}
          """
          .stripIndent()
@@ -90,16 +103,16 @@ log.info """\
 // Channels containing sequences
 if ( params.seqs ) {
   Channel
-  .fromPath(params.seqs)
-  .map { item -> [ item.baseName, item] }
-  .into { seqsCh; seqs2 }
+    .fromPath(params.seqs)
+    .map { item -> [ item.baseName, item] }
+    .into { seqsCh; seqs2 }
 }
 
 if ( params.refs ) {
   Channel
-  .fromPath(params.refs)
-  .map { item -> [ item.baseName, item] }
-  .set { refs }
+    .fromPath(params.refs)
+    .map { item -> [ item.baseName, item] }
+    .set { refs }
 }
 
 // Channels for user provided trees or empty channel if trees are to be generated [OPTIONAL]
@@ -115,9 +128,21 @@ else {
     .set { trees }
 }
 
+// Channels for QuanTest2
+Channel
+  .fromPath(params.refnames)
+  .map { item -> [ item.baseName, item] }
+  .set { refnames }
+Channel
+  .fromPath(params.ss)
+  .map { item -> [ item.baseName, item] }
+  .set { ss }
+
+
 align_methods = params.align_method
 slave_trees_methods = params.slave_tree_method
 tree_methods = params.tree_method
+
 
 /*
  * GENERATE GUIDE TREES USING MEHTODS DEFINED WITH "--tree_method"
@@ -131,22 +156,22 @@ process generate_trees {
     publishDir "${params.outdir}/guide_trees", mode: 'copy', overwrite: true
    
     input:
-    set val(id), \
-         file(seqs) \
-         from seqsCh
-    each tree_method from tree_methods.tokenize(',')
+      set val(id), \
+          file(seqs) \
+          from seqsCh
+      each tree_method from tree_methods.tokenize(',')
 
    output:
-     set val(id), \
-       val(tree_method), \
-       file("${id}.${tree_method}.dnd") \
-       into treesGenerated
+      set val(id), \
+          val(tree_method), \
+          file("${id}.${tree_method}.dnd") \
+          into treesGenerated
 
-   when:
-     !params.trees
+    when:
+      !params.trees
 
-   script:
-    template "tree/generate_tree_${tree_method}.sh"
+    script:
+      template "tree/generate_tree_${tree_method}.sh"
 
 }
 
@@ -162,15 +187,12 @@ process slave_alignment {
 
     input:
       set val(id), \
-        val(tree_method), \
-        file(guide_tree), \
-        file(seqs) \
-        from seqsAndTreesForSlaveAlignment
-
+          val(tree_method), \
+          file(guide_tree), \
+          file(seqs) \
+          from seqsAndTreesForSlaveAlignment
       each slave_tree from slave_trees_methods.tokenize(',')   
-
       each align_method from align_methods.tokenize(',')   
-
       each bucket_size from params.buckets.tokenize(',')
 
     when:
@@ -178,33 +200,118 @@ process slave_alignment {
 
     output:
       set val(id), \
-        val("${align_method}"), \
-        val(tree_method), \
-        val("slave_align"), \
-        val(bucket_size), \
-        val("${slave_tree}"), \
-        file("*.aln") \
-        into slaveOut
-      
-      set val(id), \
-        val("${align_method}"), \
-        val(tree_method), \
-        val(bucket_size), \
-        val("${slave_tree}"), \
-        file("${id}.homoplasy") \
-        into homoSlave
+          val("${align_method}"), \
+          val(tree_method), \
+          val("slave_align"), \
+          val(bucket_size), \
+          val("${slave_tree}"), \
+          file("*.aln") \
+          into slaveOut
 
       set val(id), \
-        val("${align_method}"), \
-        val(tree_method), \
-        val("slave_align"), \
-        val(bucket_size), \
-        val("${slave_tree}"), \
-        file(".command.trace") \
-        into metricsSlave
+          val("${align_method}"), \
+          val(tree_method), \
+          val(bucket_size), \
+          val("${slave_tree}"), \
+          file("*.aln"), \
+          file(seqs), \
+          file(guide_tree) \
+          into quantestSlave
+
+      set val(id), \
+          val(tree_method), \
+          file(seqs), \
+          file(guide_tree) \
+          into dTSseqidscoreSlave
+      
+      set val(id), \
+          val("${align_method}"), \
+          val(tree_method), \
+          val(bucket_size), \
+          val("${slave_tree}"), \
+          file("${id}.homoplasy") \
+          into homoSlave
+
+      set val(id), \
+          val("${align_method}"), \
+          val(tree_method), \
+          val("slave_align"), \
+          val(bucket_size), \
+          val("${slave_tree}"), \
+          file(".command.trace") \
+          into metricsSlave
 
    script:
     template "slave_reg/slave_reg_${align_method}.sh"
+}
+
+// Merge toQuantest channel
+quantestSlave
+  .combine ( refnames, by:0 )
+  .combine ( ss, by:0 )
+  .set { toQuantest }
+
+process quantest2 {
+    tag "${id}"
+    publishDir "${params.outdir}/quantest2", mode: 'copy', overwrite: true
+    container 'suzannejin/mod_quantest2:latest'
+
+    input:
+      set val(id), \
+        val(align_method), \
+        val(tree_method), \
+        val(bucket_size), \
+        val(slave_tree), \
+        file(msa), \
+        file(seqs), \
+        file(guide_tree), \
+        file(refnames), \
+        file(ss) \
+        from toQuantest
+      each nquan from params.nquan.tokenize(',')
+    
+    when:
+      params.quantest2
+
+    output:
+      set val(id), \
+          val("${align_method}"), \
+          val(tree_method), \
+          val("slave_align"), \
+          val(bucket_size), \
+          val("${slave_tree}"), \
+          val(nquan), \
+          file("${id}.slave_align.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.informative${nquan}.with.${tree_method}.tree.*") \
+          into quantestOut
+
+    script:
+      template "quantest/run_quantest2.sh"
+}
+
+process dTSseqidscore {
+    tag "${id}"
+    publishDir "${params.outdir}/dTSseqidscore", mode: 'copy', overwrite: true
+    
+    input:
+    set val(id), \
+        val(tree_method), \
+        file(seqs), \
+        file(guide_tree) \
+        from dTSseqidscoreSlave
+    each nseqid from params.nseqid.tokenize(',')
+
+    when:
+      params.dTSseqidscore
+
+    output:
+    set val(id), \
+        val(tree_method), \
+        val(nseqid), \
+        file("${id}.informative${nseqid}.with.${tree_method}.tree.*") \
+        into dTSseqidscoreOut
+
+    script:
+      template "seqid/dTSseqidscore.sh"
 }
 
 process metrics{
@@ -212,27 +319,27 @@ process metrics{
     publishDir "${params.outdir}/metrics", mode: 'copy', overwrite: true
 
     input:
-    set val(id), \
-      val(align_method), \
-      val(tree_method), \
-      val(mode), \
-      val(bucket_size), \
-      val(slave_tree), \
-      val(metricsFile) \
-      from metricsSlave
+      set val(id), \
+          val(align_method), \
+          val(tree_method), \
+          val(mode), \
+          val(bucket_size), \
+          val(slave_tree), \
+          val(metricsFile) \
+          from metricsSlave
 
     when:
       params.metrics
 
     output:
-    set file("${id}.${mode}.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.metrics"), \
-      file("*.realtime"), \
-      file("*.rss"), \
-      file("*.peakRss"), \
-      file("*.vmem"), \
-      file("*.peakVmem"), \
-      file("*.metrics") \
-        into metricsOut
+      set file("${id}.${mode}.${bucket_size}.${align_method}.with.${tree_method}.tree.slave.${slave_tree}.metrics"), \
+          file("*.realtime"), \
+          file("*.rss"), \
+          file("*.peakRss"), \
+          file("*.vmem"), \
+          file("*.peakVmem"), \
+          file("*.metrics") \
+          into metricsOut
 
     script:
     """    
@@ -260,25 +367,25 @@ process homoplasy{
     publishDir "${params.outdir}/homoplasy", mode: 'copy', overwrite: true
 
     input:
-    set val(id), \
-      val(align_method), \
-      val(tree_method), \
-      val(bucket_size), \
-      val(slave_tree), \
-      file(homoplasy) \
-      from homoSlave
+      set val(id), \
+          val(align_method), \
+          val(tree_method), \
+          val(bucket_size), \
+          val(slave_tree), \
+          file(homoplasy) \
+          from homoSlave
 
     when:
       params.homoplasy
 
     output:
-    set file("*.homo"), \
-        file("*.w_homo"), \
-        file("*.w_homo2"), \
-        file("*.len"), \
-        file("*.ngap"), \
-        file("*.ngap2") \
-        into homoplasyOut
+      set file("*.homo"), \
+          file("*.w_homo"), \
+          file("*.w_homo2"), \
+          file("*.len"), \
+          file("*.ngap"), \
+          file("*.ngap2") \
+          into homoplasyOut
 
     script:
     """    
