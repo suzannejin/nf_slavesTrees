@@ -2,6 +2,9 @@
 work/
 results/
 data/
+test/
+pipeline_info/
+log.*
 .nextflow*
 report*
 trace*
